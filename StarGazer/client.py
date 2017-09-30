@@ -34,6 +34,8 @@ import re
 import requests
 import json
 
+import threading
+
 
 # on error torado does not throw exceptions
 # how to handle these?
@@ -65,7 +67,17 @@ class Client:
             'updateuser': self.updateuser_action,
             'challstr': self.challstr_action,
             'nametaken': self.nametaken_action,
-            '': self.log_message,
+            'request': self.request_action,
+            'init': self.init_action,
+            'teamsize': self.teamsize_action,
+            'player': self.player_action,
+            'join': self.join_action,
+            'j': self.join_action,
+            'J': self.join_action,
+            'chat': self.chat_action,
+            'c': self.chat_action,
+            'C': self.chat_action,
+            '': self.log_message
         }
 
         self.ioloop = IOLoop.instance()
@@ -171,6 +183,33 @@ class Client:
             room = 'None'
         print '<JOIN>: ' + room + ': ' + data
 
+    def init_action(self, room, data):
+        if data == 'battle':
+            self.battleState = dict()
+            self.battleState[room] = dict()
+            self.battleState[room]['p1'] = dict()
+            self.battleState[room]['p2'] = dict()
+
+    def player_action(self, room, data):
+        player_token, player_name, _ = data.split('|')
+        self.battleState[room][player_token]['name'] = player_name
+
+    def teamsize_action(self, room, data):
+        player_token, teamsize = data.split('|')
+        self.battleState[room][player_token]['teamsize'] = int(teamsize)
+
+    def request_action(self, room, data):
+        pokemon_data = json.loads(data)
+        player_token = pokemon_data["side"]["id"]
+
+        self.battleState[room][player_token]["pokemon"] = pokemon_data["side"]["pokemon"]
+        self.battleState[room][player_token]["active"] = pokemon_data["active"][0]["moves"]
+        self.battleState[room][player_token]["rqid"] = pokemon_data["side"]["rqid"]
+
+    def title_action(self, room, data):
+        if self.battleState[room]:
+            self.battleState[room['title']] = data
+
     def formats_action(self, room, data):
         print '\n'.join(["<FORMAT>: " + d for d in data.split(',')])
 
@@ -184,7 +223,11 @@ class Client:
         pass
 
     def queryresponse_action(self, room, data):
-        pass
+        query_type, json_data = data.split('|')
+        json_data = json.loads(json_data)
+        if not json_data:
+            json_data = '(Empty)'
+        print '<QUERY RESP>: querytype: ' + query_type + ' query JSON: ' + json_data
 
     def challstr_action(self, room, data):
         # if cookies GET  http://play.pokemonshowdown.com/action.php?act=upkeep&challstr=CHALLSTR
@@ -208,8 +251,6 @@ class Client:
 
     def init_battle(self):
         self.ws.write_message("|/search gen7randombattle")
-
-
 
 
     def nametaken_action(self, room, data):
