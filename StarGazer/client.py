@@ -130,7 +130,10 @@ class Client:
                         print "Which battle would you like to forfeit?"
                         for i in range(len(self.battles)):
                             white_bg(str(i) + '. ' + self.battles[i])
-                        battle_num = int(raw_input('\x1b[5;30;42m>> ').strip())
+                        inp = raw_input('\x1b[5;30;42m>> ').strip()
+                        if inp == 'q':
+                            continue
+                        battle_num = int(inp)
                         if 0 <= battle_num < len(self.battles):
                             self.forfeit_battle(self.battles[battle_num])
                     else:
@@ -139,7 +142,10 @@ class Client:
                     print "Which battle would you like to move in?"
                     for i in range(len(self.battles)):
                         white_bg(str(i) + '. ' + self.battles[i])
-                    battle_num = int(raw_input('\x1b[5;30;42m>> ').strip())
+                    inp = raw_input('\x1b[5;30;42m>> ').strip()
+                    if inp == 'q':
+                        continue
+                    battle_num = int(inp)
                     print '\x1b[0m'
                     battle = self.battleState[self.battles[battle_num]]
                     print "Choose your move:"
@@ -169,7 +175,10 @@ class Client:
                     print "Which battle would you like to switch in?"
                     for i in range(len(self.battles)):
                         white_bg(str(i) + '. ' + self.battles[i])
-                    battle_num = int(raw_input('\x1b[5;30;42m>> ').strip())
+                    inp = raw_input("\x1b[5;30;42m>> ").strip()
+                    if inp == 'q':
+                        continue
+                    battle_num = int(inp)
                     print '\x1b[0m'
                     battle = self.battleState[self.battles[battle_num]]
                     print "Which pokemon would you like to switch to?"
@@ -178,6 +187,8 @@ class Client:
                         if not pokemon['active']:
                             yellow(str(i + 1) + '. ' + pokemon['details'])
                     pokemon_int = raw_input("\x1b[5;30;42m>> ")
+                    if pokemon_int == 'q':
+                        continue
                     self.choose(self.battles[battle_num], "switch", pokemon_int)
                 elif command.startswith('pdb'):
                     pdb.set_trace()
@@ -483,7 +494,7 @@ class Client:
     def sidestart_action(self, room, data):
         #p1: u05431ujijklk|Spikes
         side_info = data.split('|')
-        side_name = side_info[1]
+        side_name = side_info[1][6:]
         with self.terminal_lock:
             print 'Side effect: ' + side_name
         self.battleState[room]['side'] = side_name
