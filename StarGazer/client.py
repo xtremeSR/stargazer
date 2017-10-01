@@ -69,6 +69,8 @@ class Client:
             'challstr': self.challstr_action,
             'nametaken': self.nametaken_action,
             'request': self.request_action,
+            'cant': self.cant_action,
+            'miss': self.miss_action,
             'init': self.init_action,
             '-fieldstart': self.fieldstart_action,
             '-damage': self.damage_action,
@@ -116,9 +118,9 @@ class Client:
                             self.forfeit_battle(self.battles[battle_num])
                     else:
                         print "There are no current active battles"
-                elif command.startswith('choose'):
+                elif command.startswith('move'):
                     print "Choosing move..."
-                    print "Which battle would you like to choose for?"
+                    print "Which battle would you like to move in"
                     for i in range(len(self.battles)):
                         print str(i) + '. ' + self.battles[i]
                     battle_num = int(raw_input('battle int > ').strip())
@@ -129,16 +131,32 @@ class Client:
                         for j in range(len(pokemon["moves"])):
                             move = pokemon['moves'][j]
                             print str(j + 1) + '. ' + move["move"] + " (" + str(move["pp"]) + "/" + str(move["maxpp"]) + ")" + (" disabled" if move["disabled"] else "")
-                        for j in range(len(pokemon["canZMove"])):
-                            move = pokemon['moves'][j]
-                            print str(j + 5) + '. ' + move["move"] + " (1/1)"
+                        if "canZMove" in pokemon:
+                            for j in range(len(pokemon["canZMove"])):
+                                move = pokemon['canZMove'][j]
+                                print str(j + 5) + '. ' + move["move"] + " (1/1)"
                         move_int = int(raw_input("move > "))
                         if move_int > 4:
                             move_selected.extend([str(move_int - 4), 'zmove'])
                         else:
                             move_selected.append(str(move_int))
                     self.choose(self.battles[battle_num], "move", move_selected)
-
+                elif command.startswith('switch'):
+                    print "Switching pokemon..."
+                    print "Which battle would you like to switch in?"
+                    for i in range(len(self.battles)):
+                        print str(i) + '. ' + self.battles[i]
+                    battle_num = int(raw_input('battle int > ').strip())
+                    battle = self.battleState[self.battles[battle_num]]
+                    print "Which pokemon would you like to switch to?"
+                    for i in range(len(battle[battle['you']]['pokemon'])):
+                        pokemon = battle[battle['you']]['pokemon'][i]
+                        if not pokemon['active']:
+                            print str(i + 1) + '. ' + pokemon['details']
+                    pokemon_int = raw_input("pokemon > ")
+                    self.choose(self.battles[battle_num], "switch", pokemon_int)
+                elif command.startswith('pdb'):
+                    pdb.set_trace()
                 elif command == 'custom':
                     self.ws.write_message(raw_input('custom command > '))
 
@@ -172,6 +190,15 @@ class Client:
                 break
             else:
                 self.parse_message(msg)
+
+
+    def cant_action(self, room, data):
+        #p2a: Klefki|par
+        pass
+
+    def miss_action(self, room, data):
+        #p2a: Klefki|p1a: Qwilfish
+        pass
 
     def generate_URL(self):
         c = lambda s, i: s + chr(i)
@@ -247,7 +274,7 @@ class Client:
         if player_token == self.battleState[room]['you']:
             switch_success = False
             for pokemon in self.battleState[room][player_token]["pokemon"]:
-                if pokemon['details'] == details and pokemon['condition'] == condition:
+                if pokemon['details'] == details:
                     pokemon['active'] = True
                     switch_success = True
                 else:
@@ -304,7 +331,7 @@ class Client:
 
         for pokemon in self.battleState[room][player_token]["pokemon"]:
             if pokemon['ident'] == player_token + ': ' + healed_pokemon:
-                pokemon['condition'] = condition
+                # pokemon['condition'] = condition
                 break
 
     def status_action(self, room, data):
@@ -317,7 +344,8 @@ class Client:
         for pokemon in self.battleState[room][player_token]["pokemon"]:
             if pokemon['ident'] == player_token + ': ' + healed_pokemon:
                 if len(pokemon['condition'].split(' ')) == 1:
-                    pokemon['condition'] += ' ' + condition
+                    # pokemon['condition'] += ' ' + condition
+                    pass
                 break
 
     def execute(self, room, operation, data):
@@ -403,7 +431,7 @@ class Client:
 
         for pokemon in self.battleState[room][player_token]["pokemon"]:
             if pokemon['ident'] == player_token + ': ' + damaged_pokemon:
-                pokemon['condition'] = condition
+                # pokemon['condition'] = condition
                 break
 
 
@@ -417,7 +445,7 @@ class Client:
 
     def choose(self, room, action, items):
         # battle-gen7randombattle-639184562|/choose move 1 zmove|2
-        resp = '"' + room + "|/choose " + action + " " + items.join(' ') + "|" + self.battleState[room][self.battleState[room]['you']]['rqid'] + '"'
+        resp = '"' + room + "|/choose " + action + " " + ' '.join(items) + "|" + self.battleState[room][self.battleState[room]['you']]['rqid'] + '"'
         print "<MOVE>"
         print "<RESPONSE> " + resp
         self.ws.write_message(resp)
