@@ -42,6 +42,23 @@ import threading
 
 # how to close websocket?
 
+def red(string):
+    print '\x1b[1;31;40m%s\x1b[0m' % string
+
+def green(string):
+    print '\x1b[1;32;40m%s\x1b[0m' % string
+
+def green_bg(string):
+    print '\x1b[5;30;42m%s\x1b[0m' % string
+
+def white_bg(string):
+    print '\x1b[0;30;47m%s\x1b[0m' % string
+
+def blue_bg(string):
+    print '\x1b[0;30;44m%s\x1b[0m' % string
+
+def yellow(string):
+    print '\x1b[1;33;40m%s\x1b[0m' % string
 
 class Client:
     def __init__(self):
@@ -104,74 +121,84 @@ class Client:
         while True:
             raw_input()
             with self.terminal_lock:
-                command = raw_input("PS >> ").strip()
-                print "<SEND COMMAND>: " + command
+                command = raw_input("\x1b[5;30;42m>> ").strip()
+                print '\x1b[0m'
                 if command == 'start':
                     self.init_battle()
                 elif command.startswith('forfeit'):
                     if len(self.battles):
                         print "Which battle would you like to forfeit?"
                         for i in range(len(self.battles)):
-                            print str(i) + '. ' + self.battles[i]
-                        battle_num = int(raw_input('battle int > ').strip())
+                            white_bg(str(i) + '. ' + self.battles[i])
+                        battle_num = int(raw_input('\x1b[5;30;42m>> ').strip())
                         if 0 <= battle_num < len(self.battles):
                             self.forfeit_battle(self.battles[battle_num])
                     else:
-                        print "There are no current active battles"
+                        red("Error: There are no current active battles")
                 elif command.startswith('move'):
-                    print "Choosing move..."
-                    print "Which battle would you like to move in"
+                    print "Which battle would you like to move in?"
                     for i in range(len(self.battles)):
-                        print str(i) + '. ' + self.battles[i]
-                    battle_num = int(raw_input('battle int > ').strip())
+                        white_bg(str(i) + '. ' + self.battles[i])
+                    battle_num = int(raw_input('\x1b[5;30;42m>> ').strip())
+                    print '\x1b[0m'
                     battle = self.battleState[self.battles[battle_num]]
-                    print "Which move in battle would you like to choose?"
+                    print "Choose your move:"
                     move_selected = []
                     for pokemon in battle[battle['you']]['active']:
                         for j in range(len(pokemon["moves"])):
                             move = pokemon['moves'][j]
-                            print str(j + 1) + '. ' + move["move"] + " (" + str(move["pp"]) + "/" + str(move["maxpp"]) + ")" + (" disabled" if move["disabled"] else "")
+                            if not move['disabled']:
+                                yellow(str(j + 1) + '. ' + move["move"] + " (" + str(move["pp"]) + "/" + str(move["maxpp"]) + ")")
+                            else:
+                                 red(str(j + 1) + '. ' + move["move"] + " (DISABLED)")
                         if "canZMove" in pokemon:
                             for j in range(len(pokemon["canZMove"])):
                                 move = pokemon['canZMove'][j]
-                                print str(j + 5) + '. ' + move["move"] + " (1/1)"
-                        move_int = int(raw_input("move > "))
+                                yellow(str(j + 5) + '. ' + move["move"] + "\xE2\xAD\x90")
+                        move_int = int(raw_input("\x1b[5;30;42m>> "))
+                        print '\x1b[0m'
                         if move_int > 4:
                             move_selected.extend([str(move_int - 4), 'zmove'])
                         else:
                             move_selected.append(str(move_int))
+                        if "canMegaEvo" in pokemon:
+                            if (raw_input("Do you want to Mega Evolve? [y/N]: ") == 'y'):
+                                move_selected.append('mega')
                     self.choose(self.battles[battle_num], "move", move_selected)
                 elif command.startswith('switch'):
-                    print "Switching pokemon..."
                     print "Which battle would you like to switch in?"
                     for i in range(len(self.battles)):
-                        print str(i) + '. ' + self.battles[i]
-                    battle_num = int(raw_input('battle int > ').strip())
+                        white_bg(str(i) + '. ' + self.battles[i])
+                    battle_num = int(raw_input('\x1b[5;30;42m>> ').strip())
+                    print '\x1b[0m'
                     battle = self.battleState[self.battles[battle_num]]
                     print "Which pokemon would you like to switch to?"
                     for i in range(len(battle[battle['you']]['pokemon'])):
                         pokemon = battle[battle['you']]['pokemon'][i]
                         if not pokemon['active']:
-                            print str(i + 1) + '. ' + pokemon['details']
-                    pokemon_int = raw_input("pokemon > ")
+                            yellow(str(i + 1) + '. ' + pokemon['details'])
+                    pokemon_int = raw_input("\x1b[5;30;42m>> ")
                     self.choose(self.battles[battle_num], "switch", pokemon_int)
                 elif command.startswith('pdb'):
                     pdb.set_trace()
                 elif command == 'custom':
-                    self.ws.write_message(raw_input('custom command > '))
+                    self.ws.write_message(raw_input('\x1b[5;30;42m>> '))
+                    print '\x1b[0m'
+                else:
+                    red('Bad input!')
 
 
     @gen.coroutine
     def connect(self):
         self.generate_URL()
-        print '<URL IS>: %s' % self.url
+        print 'Opening Websocket to ' + self.url
         try:
             self.ws = yield websocket_connect(self.url)
         except Exception, e:
-            print "Could not connect to Showdown"
-            print e.strerror
+            red("Could not connect to Showdown")
+            red(e.strerror)
         else:
-            print "Connected!"
+            green("Websocket connected")
             self.run()
             input_thread = threading.Thread(target=self.send_command_to_showdown)
             input_thread.daemon = True
@@ -184,7 +211,7 @@ class Client:
             msg = yield self.ws.read_message()
             if msg is None:
                 with self.terminal_lock:
-                    print "Connection closed."
+                    green("Websocket connection closed.")
                 self.ws = None
                 self.username = None
                 break
@@ -217,11 +244,8 @@ class Client:
             return
         m_data = content_match.group(1)
         with self.terminal_lock:
-            print '<MESSAGE DATA>:\n' + m_data
+            green(m_data)
         message_lines = m_data.split('\n')
-
-        with self.terminal_lock:
-            print '<MESSAGE COUNT>: ' + str(len(message_lines))
 
         for m in message_lines:
             if m == '':
@@ -235,14 +259,10 @@ class Client:
                     op = m[1:sep]
                     data = m[sep+1:]
 
-                with self.terminal_lock:
-                    print 'EXECUTE: <OP>: ' + op + ' <DATA>: ' + data
                 self.execute(room, op, data)
             else:  # should be printed to room log
                 if m[0] == '>':
                     room = m[1:]
-                    with self.terminal_lock:
-                        print '<ROOM>: ' + room
                 else:
                     self.log_message('NO ROOM', m)
 
@@ -250,19 +270,13 @@ class Client:
         self.playername, loggedin, self.avatar = data.split('|')
         self.loggedin = (loggedin == '1')
         with self.terminal_lock:
-            print "<UPDATEUSER>:"
-            print "Updating user..."
-            print "Your playername: " + self.playername
-            print ("You are logged in" if self.loggedin else "You are not logged in")
-            print "Your avatar is " + self.avatar
+            print "Updating User"
+            print "Player: " + self.playername
+            print ("Logged in" if self.loggedin else "Not logged in")
 
     def log_message(self, room, message):
         with self.terminal_lock:
-            if message == 'start':
-                print '<STARTED>'
-                print 'LET AI TAKE CONTROL FROM HERE ON'
-            else:
-                print "<LOG MESSAGE>: " + room + ': ' + message
+            yellow("LOG: " + room + ': ' + message)
 
     def switch_action(self, room, data):
         # this is only place where you can gain information about the opponent's pokemon
@@ -281,7 +295,7 @@ class Client:
                     pokemon['active'] = False
 
             if not switch_success:
-                print 'Could not find switched in pokemon: ' + details
+                red('Could not find Pokemon: ' + details)
                 pdb.set_trace()
         else:
             # this is the opponent, we can store info on his pokemon
@@ -315,7 +329,7 @@ class Client:
         field_info = data.split('|')
         field_name = field_info[0]
         with self.terminal_lock:
-            print '<FIELDSTART> ' + field_name
+            print 'Field effect: ' + field_name
         self.battleState[room]['field'] = field_name
 
     def fieldend_action(self, room, data):
@@ -355,13 +369,13 @@ class Client:
             self.operation_handler[operation](room, data)
         else:
             with self.terminal_lock:
-                print "<GOT UNHANDLED OP>: " + operation
+                red("Unhandled op: " + operation)
 
     def chat_action(self, room, data):
         if not room:
             room = 'None'
         with self.terminal_lock:
-            print '<CHAT>: ' + room + ': ' + data
+            blue_bg(room + ': ' + data)
 
     def weather_action(self, room, data):
         weather_data = data.split('|')
@@ -370,27 +384,27 @@ class Client:
         if not room:
             room = 'None'
         with self.terminal_lock:
-            print '<JOIN>: ' + room + ': ' + data
+            blue_bg(data + ' joined ' + room)
 
     def leave_action(self, room, data):
         if data == self.battleState[room][self.battleState[room]['opponent']]['name']:
             with self.terminal_lock:
-                print "OPPONENT LEFT!"
+                red("Opponent Left \xF0\x9F\x98\xA2")
             self.forfeit_battle(room)
 
     def win_action(self, room, data):
         if room in self.battles:
             with self.terminal_lock:
                 if data == 'Sooham Rafiz':
-                    print "YOU WON!"
+                    green("YOU WON! \xF0\x9F\x98\x83")
                 else:
-                    print "YOU LOST :("
+                    red("YOU LOST! \xF0\x9F\x98\x93")
 
     def turn_action(self, room, data):
         #3
         self.battleState[room]['turn'] = int(data)
         with self.terminal_lock:
-            print '<TURN NUMBER> ' + data
+            white_bg('TURN ' + data)
 
     def init_action(self, room, data):
         if data == 'battle':
@@ -440,21 +454,22 @@ class Client:
             self.battleState[room]['title'] = data
 
     def formats_action(self, room, data):
+        return
         with self.terminal_lock:
             print '\n'.join(["<FORMAT>: " + d for d in data.split(',')])
 
     def choose(self, room, action, items):
         # battle-gen7randombattle-639184562|/choose move 1 zmove|2
         resp = '"' + room + "|/choose " + action + " " + ' '.join(items) + "|" + self.battleState[room][self.battleState[room]['you']]['rqid'] + '"'
-        print "<MOVE>"
-        print "<RESPONSE> " + resp
+        #print "<MOVE>"
+        #print "<RESPONSE> " + resp
         self.ws.write_message(resp)
 
     def updatesearch_action(self, room, data):
         battles = json.loads(data)
         current_games = battles['games']
         with self.terminal_lock:
-            print "<UPDATESEARCH>: Looking for %d battles, playing %d" % (len(battles['searching']), len(current_games) if current_games else 0)
+            print "Looking for %d battles, playing %d" % (len(battles['searching']), len(current_games) if current_games else 0)
         self.battles = current_games.keys() if current_games else []
 
     def fail_action(self, room, data):
@@ -470,7 +485,7 @@ class Client:
         side_info = data.split('|')
         side_name = side_info[1]
         with self.terminal_lock:
-            print '<SIDESTART> ' + side_name
+            print 'Side effect: ' + side_name
         self.battleState[room]['side'] = side_name
 
     def sideend_action(self, room, data):
@@ -499,15 +514,14 @@ class Client:
             'challstr': data,
             'pass': 'zHYCxfZg26V5'
         }
+        print "Logging in..."
         resp = requests.post('https://play.pokemonshowdown.com/action.php', data=payload)
         if (resp.status_code == 200):
-            with self.terminal_lock:
-                print '<RESPONSE>: ' + resp.text
-                print '<WRITING>:' + '"|/trn ' + ','.join(["Sooham Rafiz", '0', json.loads(resp.text[1:])['assertion']]) + '"'
+            # with self.terminal_lock:
             self.ws.write_message('"|/trn ' + ','.join(["Sooham Rafiz", '0', json.loads(resp.text[1:])['assertion']]) + '"')
         else:
             with self.terminal_lock:
-                print '<ERROR>: challstr response not 200'
+                red('Error: challstr response not 200')
 
     def init_battle(self):
         self.ws.write_message('"|/search gen7randombattle"')
@@ -543,5 +557,4 @@ if __name__ == "__main__":
 
     dictConfig(logging_config)
     logger = logging.getLogger()
-
     Client()
