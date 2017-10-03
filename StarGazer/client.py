@@ -79,36 +79,55 @@ class Client:
 
         self.operation_handler = {
             'formats': self.formats_action,
+            'title': self.title_action,
             'updatesearch': self.updatesearch_action,
-            'updatechallenges': self.updatechallenges_action,
+            #'updatechallenges': self.updatechallenges_action,
             'queryresponse': self.queryresponse_action,
             'updateuser': self.updateuser_action,
             'challstr': self.challstr_action,
-            'nametaken': self.nametaken_action,
+            #'nametaken': self.nametaken_action,
             'request': self.request_action,
-            'cant': self.cant_action,
-            'miss': self.miss_action,
             'init': self.init_action,
-            '-fieldstart': self.fieldstart_action,
+
+            #'-fieldstart': self.fieldstart_action,
+            #'-fieldend': self.fieldend_action,
+            #'-sidestart': self.sidestart_action,
+            #'-sideend': self.sideend_action,
+            '-boost': self.boost_action,
+            '-unboost': self.unboost_action,
+            '-item': self.item_action,
+            '-enditem': self.enditem_action,
+            '-heal': self.heal_action,
+            '-weather': self.weather_action,
+            '-status': self.status_action,
+            '-ability': self.ability_action,
+            '-drag': self.drag_action,
+            #'-supereffective': self.supereffective_action,
+            #'-resisted': self.resisted_action,
+            #'-immune': sel.immune_action,
             '-damage': self.damage_action,
             '-fail': self.fail_action,
-            '-sidestart': self.sidestart_action,
-            '-heal': self.heal_action,
-            '-status': self.status_action,
+
             'teamsize': self.teamsize_action,
-            'title': self.title_action,
+            #'cant': self.cant_action,
+            #'miss': self.miss_action,
             'player': self.player_action,
+            #'detailschange': self.detailschange_action,
             'join': self.join_action,
             'switch': self.switch_action,
+            'turn': self.turn_action,
+            'move': self.move_action,
+            'faint': self.faint_action,
+            'win': self.win_action,
+
             'j': self.join_action,
             'J': self.join_action,
             'l': self.leave_action,
-            'win': self.win_action,
             'L': self.leave_action,
             'chat': self.chat_action,
             'c': self.chat_action,
             'C': self.chat_action,
-            'turn': self.turn_action,
+
             '': self.log_message
         }
 
@@ -117,6 +136,39 @@ class Client:
         # PeriodicCallback(self.keep_alive, 20000, io_loop=self.ioloop).start()
         self.ioloop.start()
 
+    # ------------ corountines -----------------------
+    @gen.coroutine
+    def connect(self):
+        self.generate_URL()
+        print 'Opening Websocket to ' + self.url
+        try:
+            self.ws = yield websocket_connect(self.url, ping_interval=3, ping_timeout=30)
+        except Exception, e:
+            red("Could not connect to Showdown")
+            red(e.strerror)
+        else:
+            green("Websocket connected")
+            self.run()
+            input_thread = threading.Thread(target=self.send_command_to_showdown)
+            input_thread.daemon = True
+            input_thread.start()
+
+
+    @gen.coroutine
+    def run(self):
+        while True:
+            msg = yield self.ws.read_message()
+            if msg is None:
+                with self.terminal_lock:
+                    green("Websocket connection closed.")
+                self.ws = None
+                self.username = None
+                break
+            else:
+                self.parse_message(msg)
+
+
+    # ----------- client to server functions ---------
     def send_command_to_showdown(self):
         while True:
             raw_input()
@@ -199,52 +251,13 @@ class Client:
                     red('Bad input!')
 
 
-    @gen.coroutine
-    def connect(self):
-        self.generate_URL()
-        print 'Opening Websocket to ' + self.url
-        try:
-            self.ws = yield websocket_connect(self.url)
-        except Exception, e:
-            red("Could not connect to Showdown")
-            red(e.strerror)
-        else:
-            green("Websocket connected")
-            self.run()
-            input_thread = threading.Thread(target=self.send_command_to_showdown)
-            input_thread.daemon = True
-            input_thread.start()
+    def choose(self, room, action, items):
+        # battle-gen7randombattle-639184562|/choose move 1 zmove|2
+        resp = '"' + room + "|/choose " + action + " " + ' '.join(items) + "|" + self.battleState[room][self.battleState[room]['you']]['rqid'] + '"'
+        #print "<MOVE>"
+        #print "<RESPONSE> " + resp
+        self.ws.write_message(resp)
 
-
-    @gen.coroutine
-    def run(self):
-        while True:
-            msg = yield self.ws.read_message()
-            if msg is None:
-                with self.terminal_lock:
-                    green("Websocket connection closed.")
-                self.ws = None
-                self.username = None
-                break
-            else:
-                self.parse_message(msg)
-
-
-    def cant_action(self, room, data):
-        #p2a: Klefki|par
-        pass
-
-    def miss_action(self, room, data):
-        #p2a: Klefki|p1a: Qwilfish
-        pass
-
-    def generate_URL(self):
-        c = lambda s, i: s + chr(i)
-        name = reduce(c, random.sample(self.chars, 8), '')
-
-        self.username = name
-        self.token = str(random.randint(0, 1000))
-        self.url = '/'.join([self.base, self.token, self.username, 'websocket'])
 
     def parse_message(self, message):
         room = None
@@ -270,12 +283,44 @@ class Client:
                     op = m[1:sep]
                     data = m[sep+1:]
 
+                yellow('Executing op: ' + op + ' data: ' + data)
                 self.execute(room, op, data)
             else:  # should be printed to room log
                 if m[0] == '>':
                     room = m[1:]
                 else:
                     self.log_message('NO ROOM', m)
+
+    def execute(self, room, operation, data):
+        if data == '':
+            return
+        if operation in self.operation_handler:
+            self.operation_handler[operation](room, data)
+        else:
+            with self.terminal_lock:
+                red("Unhandled op: " + operation)
+
+    def join_action(self, room, data):
+        if not room:
+            room = 'None'
+        with self.terminal_lock:
+            blue_bg(data + ' joined ' + room)
+
+    def leave_action(self, room, data):
+        if data == self.battleState[room][self.battleState[room]['opponent']]['name']:
+            with self.terminal_lock:
+                red("Opponent Left \xF0\x9F\x98\xA2")
+            self.forfeit_battle(room)
+
+    def chat_action(self, room, data):
+        if not room:
+            room = 'None'
+        with self.terminal_lock:
+            blue_bg(room + ': ' + data)
+
+    def log_message(self, room, message):
+        with self.terminal_lock:
+            yellow("LOG: " + room + ': ' + message)
 
     def updateuser_action(self, room, data):
         self.playername, loggedin, self.avatar = data.split('|')
@@ -285,12 +330,55 @@ class Client:
             print "Player: " + self.playername
             print ("Logged in" if self.loggedin else "Not logged in")
 
-    def log_message(self, room, message):
-        with self.terminal_lock:
-            yellow("LOG: " + room + ': ' + message)
+    # ------------ handlers ------------------------
+
+    def boost_action(self, room, data):
+        # |-boost|p1a: Tornadus|atk|1
+        # |-boost|p1a: Houndoom|spa|2
+        # |-boost|p2a: Serperior|spa|2
+        pokemon_data, boost_attr, boost_val = data.split('|')
+        player_token, pokemon_name = pokemon_data.split(': ')
+        player_token = player_token[:2]
+        for pokemon in self.battleState[room][player_token]['pokemon']:
+            if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                if 'boost' not in pokemon:
+                    pokemon['boost'] = dict()
+                if boost_attr not in pokemon['boost']:
+                    pokemon['boost'][boost_attr] = 0
+                pokemon['boost'][boost_attr] += int(boost_val)
+                break
+
+
+
+    def unboost_action(self, room, data):
+        # |-unboost|p2a: Manectric|atk|1
+        #|-unboost|p2a: Simisage|atk|1
+        #|-unboost|p1a: Lumineon|atk|1
+        pokemon_data, boost_attr, boost_val = data.split('|')
+        player_token, pokemon_name = pokemon_data.split(': ')
+        player_token = player_token[:2]
+        for pokemon in self.battleState[room][player_token]['pokemon']:
+            if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                if 'boost' not in pokemon:
+                    pokemon['boost'] = dict()
+                if boost_attr not in pokemon['boost']:
+                    pokemon['boost'][boost_attr] = 0
+                pokemon['boost'][boost_attr] += -int(boost_val)
+                break
+
+    def crit_action(self, room, data):
+        # |-crit|p1a: Sharpedo
+        # if you bad
+        pass
+
+    def detailschange_action(self, room, data):
+        # |detailschange|p1a: Swampert|Swampert-Mega, L75, F
+        pass
+
 
     def switch_action(self, room, data):
-        # this is only place where you can gain information about the opponent's pokemon
+        # |switch|p2a: Porygon2|Porygon2, L79|100/100
+        # this and drag is only place where you can gain information about the opponent's pokemon
         pokemon, details, condition = data.split('|')
         player_token, pokemon_name = pokemon.split(':')
         player_token = player_token[:2]
@@ -327,14 +415,13 @@ class Client:
                     {
                         'ident': player_token + ': ' + pokemon_name,
                         'ability': None,
-                        'items': None,
+                        'item': None,
                         'details': details,
                         'active': True,
                         'moves': [],
                         'condition': condition
                     }
                 )
-
 
     def fieldstart_action(self, room, data):
         field_info = data.split('|')
@@ -344,64 +431,82 @@ class Client:
         self.battleState[room]['field'] = field_name
 
     def fieldend_action(self, room, data):
+        field_info = data.split('|')
+        field_name = field_info[0]
+        with self.terminal_lock:
+            print 'Field effect: ' + field_name
+        self.battleState[room]['field'] = field_name
         pass
 
     def heal_action(self, room, data):
         #p1a: Bronzong|93/100 brn|[from] item: Leftovers
         #p2a: Moltres|252/271|[from] item: Leftovers
-        heal_info = data.split('|')
-        player_token = heal_info[0][:2]
-        healed_pokemon = heal_info[0][5:]
-        condition = heal_info[1]
+        #p2a: Articuno|69/100|[from] item: Leftovers
+        # we can glean information of opponent's item
+        data = data.split('|')
+        player_token = data[0][:2]
+        condition = data[1]
+        pokemon_name = data[0][5:]
 
-        for pokemon in self.battleState[room][player_token]["pokemon"]:
-            if pokemon['ident'] == player_token + ': ' + healed_pokemon:
-                # pokemon['condition'] = condition
-                break
+        if player_token == self.battleState[room]['opponent']:
+            for pokemon in self.battleState[room][player_token]['pokemon']:
+                if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                    if len(data) == 3:
+                        item = data[2].split(': ')[1]
+                        with self.terminal_lock:
+                            green('Opponents ' + pokemon_name + ' holds a ' + item)
+                        pokemon['item'] = item
+                    pokemon['condition'] = condition
+                    break
 
     def status_action(self, room, data):
-        #p1a: Bronzong|brn|[from] ability: Flame Body|[of] p2a: Moltres
-        heal_info = data.split('|')
-        player_token = heal_info[0][:2]
-        healed_pokemon = heal_info[0][5:]
-        condition = heal_info[1]
+        # |-status|p1a: Lunatone|brn
+        # |-status|p1a: Bronzong|brn|[from] ability: Flame Body|[of] p2a: Moltres
+        # p2a: Bouffalant|tox
+        # we can glean ability of opponent's pokemon
+        sdata = data.split('|')
+        player_token = sdata[0][:2]
+        status = sdata[1]
+        pokemon_name = sdata[0][5:]
+        opponent_content = re.match("ability:\s+?(.+?)\|\[of\] " + self.battleState[room]['opponent'] + "a: (.+)", data)
+        if (player_token == self.battleState[room]['opponent']) or opponent_content:
+            ability = None
+            if opponent_content:
+                player_token = self.battleState[room]['opponent']
+                ability = opponent_content.group(1)
+                pokemon_name = player_token + ': ' + opponent_content.group(2)
+                with self.terminal_lock:
+                    green("Opponents %s ability is %s" % (pokemon_name, ability))
+            for pokemon in self.battleState[room][player_token]['pokemon']:
+                if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                    if ability:
+                        pokemon['ability'] = ability
+                    else:
+                        # add pokemon condition to opponent's pokemon
+                        pokemon['condition'] = pokemon['condition'].split()[0] + ' ' + status
+                    break
 
-        for pokemon in self.battleState[room][player_token]["pokemon"]:
-            if pokemon['ident'] == player_token + ': ' + healed_pokemon:
-                if len(pokemon['condition'].split(' ')) == 1:
-                    # pokemon['condition'] += ' ' + condition
-                    pass
-                break
-
-    def execute(self, room, operation, data):
-        if data == '':
-            return
-        if operation in self.operation_handler:
-            self.operation_handler[operation](room, data)
-        else:
-            with self.terminal_lock:
-                red("Unhandled op: " + operation)
-
-    def chat_action(self, room, data):
-        if not room:
-            room = 'None'
-        with self.terminal_lock:
-            blue_bg(room + ': ' + data)
 
     def weather_action(self, room, data):
-        weather_data = data.split('|')
-
-    def join_action(self, room, data):
-        if not room:
-            room = 'None'
-        with self.terminal_lock:
-            blue_bg(data + ' joined ' + room)
-
-    def leave_action(self, room, data):
-        if data == self.battleState[room][self.battleState[room]['opponent']]['name']:
-            with self.terminal_lock:
-                red("Opponent Left \xF0\x9F\x98\xA2")
-            self.forfeit_battle(room)
+        # |-weather|SunnyDay|[upkeep]
+        # |-weather|SunnyDay|[upkeep]
+        # |-weather|none
+        # |-weather| data: Sandstorm|[from] ability: Sand Stream|[of] p2a: Tyranitar
+        # |-weather|RainDance|[from] ability: Drizzle|[of] p2a: Kyogre
+        # TODO: scrape ability of pokemon
+        if data == 'none':
+            self.battleState[room]['weather'] = None
+        else:
+            sdata = data.split('|')
+            self.battleState[room]['weather'] = sdata[0]
+            player_token = self.battleState[room]['opponent']
+            if player_token in data:
+                pokemon_name = self.battleState[room]['opponent'] + ': ' + sdata[2].split(':')[1]
+                for pokemon in self.battleState[room][self.battleState[room]['opponent']]['pokemon']:
+                    if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                        if 'ability'in sdata[1]:
+                            pokemon['ability'] = sdata[1].split(': ')[1]
+                        break
 
     def win_action(self, room, data):
         if room in self.battles:
@@ -412,10 +517,12 @@ class Client:
                     red("YOU LOST! \xF0\x9F\x98\x93")
 
     def turn_action(self, room, data):
-        #3
+        # You can let the AI start selection here
         self.battleState[room]['turn'] = int(data)
         with self.terminal_lock:
             white_bg('TURN ' + data)
+            for pokemon in self.battleState[room][self.battleState[room]['opponent']]['pokemon']:
+                blue_bg('Pkmn: %s, HP: %s, item: %s, ability: %s -- %s' % (pokemon['ident'][4:], pokemon['condition'], pokemon['item'], pokemon['ability'], pokemon['moves']))
 
     def init_action(self, room, data):
         if data == 'battle':
@@ -424,12 +531,13 @@ class Client:
             self.battleState[room]['p2'] = dict()
 
     def player_action(self, room, data):
-        player_token, player_name, _ = data.split('|')
-        self.battleState[room][player_token]['name'] = player_name
-        if player_name == 'Sooham Rafiz':
-            self.battleState[room]['you'] = player_token
-        else:
-            self.battleState[room]['opponent'] = player_token
+        if room in self.battles:
+            player_token, player_name, _ = data.split('|')
+            self.battleState[room][player_token]['name'] = player_name
+            if player_name == 'Sooham Rafiz':
+                self.battleState[room]['you'] = player_token
+            else:
+                self.battleState[room]['opponent'] = player_token
 
     def teamsize_action(self, room, data):
         player_token, teamsize = data.split('|')
@@ -441,24 +549,214 @@ class Client:
 
         player_token = pokemon_data["side"]["id"]
 
-        self.battleState[room][player_token]["pokemon"] = pokemon_data["side"]["pokemon"]
+        if 'pokemon' not in self.battleState[room][player_token]:
+            self.battleState[room][player_token]["pokemon"] = pokemon_data["side"]["pokemon"]
+        else:
+            for i in range(len(pokemon_data["side"]["pokemon"])):
+                self.battleState[room][player_token]['pokemon'][i]['details'] = pokemon_data['side']['pokemon'][i]['details']
+                self.battleState[room][player_token]['pokemon'][i]['condition'] = pokemon_data['side']['pokemon'][i]['condition']
+                self.battleState[room][player_token]['pokemon'][i]['active'] = pokemon_data['side']['pokemon'][i]['active']
+                self.battleState[room][player_token]['pokemon'][i]['stats'] = pokemon_data['side']['pokemon'][i]['stats']
+                self.battleState[room][player_token]['pokemon'][i]['moves'] = pokemon_data['side']['pokemon'][i]['moves'][:]
+                self.battleState[room][player_token]['pokemon'][i]['baseAbility'] = pokemon_data['side']['pokemon'][i]['baseAbility']
+                self.battleState[room][player_token]['pokemon'][i]['item'] = pokemon_data['side']['pokemon'][i]['item']
+                self.battleState[room][player_token]['pokemon'][i]['pokeball'] = pokemon_data['side']['pokemon'][i]['pokeball']
+                self.battleState[room][player_token]['pokemon'][i]['ability'] = pokemon_data['side']['pokemon'][i]['ability']
+
         self.battleState[room][player_token]["rqid"] = str(pokemon_data["rqid"])
         if 'active' in pokemon_data:
             self.battleState[room][player_token]["active"] = pokemon_data["active"]
 
+    def start_action(self, room, data):
+        # |-start|p2a: Emolga|Substitute
+        pass
+
+    def end_action(self, room, data):
+        # |-end|p1a: Regigigas|Slow Start|[silent]
+        pass
+
+    def activate_action(self, room, data):
+        # |-activate|p1a: Registeel|move: Protect
+        # |-activate|p2a: Comfey|move: Aromatherapy
+        pass
+
     def damage_action(self, room, data):
-        #p2a: Vespiquen|0 fnt
-        #p1a: Bronzong|87/100 brn|[from] brn
+        # p2a: Vespiquen|0 fnt
+        # p1a: Bronzong|87/100 brn|[from] brn
+        # |-damage|p1a: Lanturn|225/343
+        # |-damage|p2a: Emboar|88/100|[from] Recoil|[of] p1a: Lanturn
+        # |-damage|p2a: Raticate|26/100|[from] item: Life Orb
+        # |-damage|p2a: Yanmega|74/100 psn|[from] psn
+        # TODO: you can get item information from this
         damage_info = data.split('|')
         player_token = damage_info[0][:2]
-        damaged_pokemon = damage_info[0][5:]
+        pokemon_name = damage_info[0][5:]
         condition = damage_info[1]
 
-        for pokemon in self.battleState[room][player_token]["pokemon"]:
-            if pokemon['ident'] == player_token + ': ' + damaged_pokemon:
-                # pokemon['condition'] = condition
-                break
+        if player_token == self.battleState[room]['opponent']:
+            for pokemon in self.battleState[room][player_token]['pokemon']:
+                if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                    if len(data) == 3 and ('item' in data[2]):
+                        item = ''.join((((data[2]).split(': '))[1]).split()).lower()
+                        pokemon['item'] = item
+                    pokemon['condition'] = condition
+                    break
 
+
+    def fail_action(self, room, data):
+        #|-fail|p2a: Raticate
+        player_token, pokemon = data.split(': ')
+        player_token = player_token[:2]
+        if player_token == self.battleState[room]['you']:
+            # AI_SEND_REWARD(BAD)
+            with self.terminal_lock:
+                red("Your pokemon failed to move: " + pokemon)
+            # tell AI to switch to another pokemon here
+        else:
+            # AI_SEND_REWARD(GOOD)
+            with self.terminal_lock:
+                green("Opponent's pokemon failed to move: " + pokemon)
+
+    def immune_action(self, room, data):
+        #|-immune|p1a: Muk|[msg]
+        #|-immune|p2a: Solgaleo|[msg]
+        player_token, pokemon = data.split('|')[0].split(': ')
+        player_token = player_token[:2]
+        if player_token == self.battleState[room]['you']:
+            # AI_SEND_REWARD(GOOD)
+            with self.terminal_lock:
+                green("Your pokemon was immune: " + pokemon)
+            # tell AI to switch to another pokemon here
+        else:
+            # AI_SEND_REWARD(BAD)
+            with self.terminal_lock:
+                red("Opponent's pokemon was immune: " + pokemon)
+
+    def item_action(self, room, data):
+        # |-item|p2a: Carracosta|Air Balloon
+        pokemon_data, item = data.split('|')
+        player_token, pokemon_name = pokemon_data.split(': ')
+        player_token = player_token[:2]
+
+        if player_token == self.battleState[room]['opponent']:
+            for pokemon in self.battleState[room][player_token]['pokemon']:
+                if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                    pokemon['item'] = item
+                    break
+
+    def enditem_action(self, room, data):
+        # |-enditem|p2a: Carracosta|Air Balloon
+        # |-enditem|p1a: Furfrou|Chesto Berry|[from] move: Knock Off|[of] p2a: Simisage
+        pokemon_data, item = data.split('|')
+        player_token, pokemon_name = pokemon_data.split(': ')
+        player_token = player_token[:2]
+
+        if player_token == self.battleState[room]['opponent']:
+            for pokemon in self.battleState[room][player_token]['pokemon']:
+                if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                    pokemon['item'] = None
+                    break
+
+    def sidestart_action(self, room, data):
+        #|-sidestart|p1: u05431ujijklk|Spikes
+        #-sidestart|p1: Sooham Rafiz|move: Stealth Rock
+        #|-sidestart|p2: Zsguita|move: Stealth Rock
+        player, side_effect = data.split('|')
+        side_name = side_effect[1][6:]
+        player_token = player[:2]
+
+        with self.terminal_lock:
+            print 'Side effect on player ' + player_token + "'s side: " + side_name
+        if 'side' not in self.battleState[room][player_token]:
+            self.battleState[room][player_token]['side'] = []
+            self.battleState[room][player_token]['side'].append(side_name)
+
+    def sideend_action(self, room, data):
+        pass
+
+    def move_action(self, room, data):
+        # |move|p1a: Empoleon|Stealth Rock|p2a: Raticate
+        # glean move information about opponent
+        player_token, pokemon_name = data.split('|')[0].split(': ')
+        player_token = player_token[:2]
+        move = ''.join(data.split('|')[1].lower().split(' '))
+
+        if player_token == self.battleState[room]['opponent']:
+            with self.terminal_lock:
+                green('Opponent pokemon %s can use move %s' % (pokemon_name, move))
+            for pokemon in self.battleState[room][player_token]['pokemon']:
+                if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                    if move not in pokemon['moves']:
+                        pokemon['moves'].append(move)
+                    break
+
+    def faint_action(self, room, data):
+        # |faint|p1a: Empoleon
+        player_token, pokemon = data.split(': ')
+        player_token = player_token[:2]
+        with self.terminal_lock:
+            if player_token == self.battleState[room]['you']:
+                # AI_SEND_REWARD(BAD)
+                red("Oh no your Pokemon: " + pokemon + " fainted!")
+                # tell AI to switch to another pokemon here
+            else:
+                # AI_SEND_REWARD(GOOD)
+                green("Yes you killed : " + pokemon + "!")
+
+    def resisted_action(self, room, data):
+        # |-resisted|p1a: Lanturn
+        # |-resisted|p1a: Lunatone
+        # if player is you
+        # AI_SEND_REWARD(GOOD)
+        # else
+        # AI_SEND_REWARD(BAD)
+        pass
+
+
+    def supereffective_action(self, room, data):
+        #|-supereffective|p1a: Muk
+        # if player is opponent
+        # AI_SEND_REWARD(GOOD)
+        # else
+        # AI_SEND_REWARD(BAD)
+        pass
+
+    def cant_action(self, room, data):
+        #| cant |p2a: Klefki|par
+        pass
+
+    def miss_action(self, room, data):
+        # |-miss|p2a: Klefki|p1a: Qwilfish
+        # |-miss|p2a: Talonflame|p1a: Lunatone
+        pass
+
+    def drag_action(self, room, data):
+        # |drag|p1a: Comfey|Comfey, L79, M|210/210
+        self.switch(room, data)
+
+    def ability_action(self, room, data):
+        # |-ability|p1a: Landorus|Intimidate|boost
+        data = data.split('|')
+        player_token, pokemon_name = data[0].split(': ')
+        ability = data[1]
+        player_token = player_token[:2]
+
+        if player_token == self.battleState[room]['opponent']:
+            with self.terminal_lock:
+                green('Found opponent\'s ' + pokemon_name + ' ability is ' + ability)
+            for pokemon in self.battleState[room][player_token]['pokemon']:
+                if pokemon['ident'] == player_token + ': ' + pokemon_name:
+                    pokemon['ability'] = ability
+                    break
+
+
+    # ----- Pokemon Showdown interface actions -----
+    def init_battle(self):
+        self.ws.write_message('"|/search gen7randombattle"')
+
+    def forfeit_battle(self, battle_room):
+        self.ws.write_message('"' + battle_room + '|/forfeit"')
+        self.ws.write_message('"|/leave ' + battle_room + '"')
 
     def title_action(self, room, data):
         if self.battleState[room]:
@@ -468,50 +766,6 @@ class Client:
         return
         with self.terminal_lock:
             print '\n'.join(["<FORMAT>: " + d for d in data.split(',')])
-
-    def choose(self, room, action, items):
-        # battle-gen7randombattle-639184562|/choose move 1 zmove|2
-        resp = '"' + room + "|/choose " + action + " " + ' '.join(items) + "|" + self.battleState[room][self.battleState[room]['you']]['rqid'] + '"'
-        #print "<MOVE>"
-        #print "<RESPONSE> " + resp
-        self.ws.write_message(resp)
-
-    def updatesearch_action(self, room, data):
-        battles = json.loads(data)
-        current_games = battles['games']
-        with self.terminal_lock:
-            print "Looking for %d battles, playing %d" % (len(battles['searching']), len(current_games) if current_games else 0)
-        self.battles = current_games.keys() if current_games else []
-
-    def fail_action(self, room, data):
-        # send AI a bad signal here
-        pass
-
-    def immune_action(self, room, data):
-        # send AI a bad signal here
-        pass
-
-    def sidestart_action(self, room, data):
-        #p1: u05431ujijklk|Spikes
-        side_info = data.split('|')
-        side_name = side_info[1][6:]
-        with self.terminal_lock:
-            print 'Side effect: ' + side_name
-        self.battleState[room]['side'] = side_name
-
-    def sideend_action(self, room, data):
-        pass
-
-    def updatechallenges_action(self, room, data):
-        pass
-
-    def queryresponse_action(self, room, data):
-        query_type, json_data = data.split('|')
-        json_data = json.loads(json_data)
-        if not json_data:
-            json_data = '(Empty)'
-        with self.terminal_lock:
-            print '<QUERY RESP>: querytype: ' + query_type + ' query JSON: ' + json_data
 
     def challstr_action(self, room, data):
         # if cookies GET  http://play.pokemonshowdown.com/action.php?act=upkeep&challstr=CHALLSTR
@@ -534,15 +788,34 @@ class Client:
             with self.terminal_lock:
                 red('Error: challstr response not 200')
 
-    def init_battle(self):
-        self.ws.write_message('"|/search gen7randombattle"')
+    def queryresponse_action(self, room, data):
+        query_type, json_data = data.split('|')
+        json_data = json.loads(json_data)
+        if not json_data:
+            json_data = '(Empty)'
+        with self.terminal_lock:
+            yellow('Query response: ' + query_type + ' JSON: ' + json_data)
 
-    def forfeit_battle(self, battle_room):
-        self.ws.write_message('"' + battle_room + '|/forfeit"')
-        self.ws.write_message('"|/leave ' + battle_room + '"')
+    def updatesearch_action(self, room, data):
+        battles = json.loads(data)
+        current_games = battles['games']
+        with self.terminal_lock:
+            print "Looking for %d battles, playing %d" % (len(battles['searching']), len(current_games) if current_games else 0)
+        self.battles = current_games.keys() if current_games else []
 
+    def generate_URL(self):
+        c = lambda s, i: s + chr(i)
+        name = reduce(c, random.sample(self.chars, 8), '')
 
+        self.username = name
+        self.token = str(random.randint(0, 1000))
+        self.url = '/'.join([self.base, self.token, self.username, 'websocket'])
+
+    # --- unimplemented actions ----
     def nametaken_action(self, room, data):
+        pass
+
+    def updatechallenges_action(self, room, data):
         pass
 
 
