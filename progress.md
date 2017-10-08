@@ -90,3 +90,19 @@ tornado.websocket
 import pygogo
 import psutil
 
+
+# organization of classes
+
+Pokemon class -- holds pokemon type, stats, boosts, moves etc
+Player class -- holds information of battling players in show down
+Battle class -- the rooms being battled are being held in
+ShowdownClient class -- the websocket connection to Showdown,
+                     -- handling multiple concurrent battles, sending battle events to 
+                     -- agents, signalling turns to agents etc.
+Experience class -- holds a record of battles played
+Agent class -- holds the RL agent for pokemon showdown, one of these agents is Human input
+
+WebInterface class -- allows user to inspect agent model during battle, everytime we perform an update to a variable, publish it to server
+
+Before the agent can run it also needs to be trained, which means iterating through many battles
+this would require initiating many battles one by one till agent converges which means

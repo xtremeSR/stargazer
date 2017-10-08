@@ -373,6 +373,7 @@ class Client:
 
     def detailschange_action(self, room, data):
         # |detailschange|p1a: Swampert|Swampert-Mega, L75, F
+        # |detailschange|p1a: Gardevoir|Gardevoir-Mega, L77, F
         pass
 
 
@@ -424,6 +425,9 @@ class Client:
                 )
 
     def fieldstart_action(self, room, data):
+        # |-fieldstart|move: Misty Terrain|[from] ability: Misty Surge|[of] p2a: Tapu Fini
+
+        # TODO: get ability of opponent from this
         field_info = data.split('|')
         field_name = field_info[0]
         with self.terminal_lock:
@@ -431,6 +435,7 @@ class Client:
         self.battleState[room]['field'] = field_name
 
     def fieldend_action(self, room, data):
+        # |-fieldend|Misty Terrain
         field_info = data.split('|')
         field_name = field_info[0]
         with self.terminal_lock:
@@ -525,12 +530,14 @@ class Client:
                 blue_bg('Pkmn: %s, HP: %s, item: %s, ability: %s -- %s' % (pokemon['ident'][4:], pokemon['condition'], pokemon['item'], pokemon['ability'], pokemon['moves']))
 
     def init_action(self, room, data):
+        # |init|battle
         if data == 'battle':
             self.battleState[room] = dict()
             self.battleState[room]['p1'] = dict()
             self.battleState[room]['p2'] = dict()
 
     def player_action(self, room, data):
+        # |player|p1|Sooham Rafiz|102
         if room in self.battles:
             player_token, player_name, _ = data.split('|')
             self.battleState[room][player_token]['name'] = player_name
@@ -540,6 +547,7 @@ class Client:
                 self.battleState[room]['opponent'] = player_token
 
     def teamsize_action(self, room, data):
+        # |teamsize|p1|6
         player_token, teamsize = data.split('|')
         self.battleState[room][player_token]['teamsize'] = int(teamsize)
 
@@ -569,6 +577,7 @@ class Client:
 
     def start_action(self, room, data):
         # |-start|p2a: Emolga|Substitute
+        #|-start|p2a: Tapu Fini|Substitute
         pass
 
     def end_action(self, room, data):
@@ -578,6 +587,8 @@ class Client:
     def activate_action(self, room, data):
         # |-activate|p1a: Registeel|move: Protect
         # |-activate|p2a: Comfey|move: Aromatherapy
+        # |-activate|p2a: Tapu Fini|move: Misty Terrain
+
         pass
 
     def damage_action(self, room, data):
@@ -605,8 +616,9 @@ class Client:
 
     def fail_action(self, room, data):
         #|-fail|p2a: Raticate
-        player_token, pokemon = data.split(': ')
-        player_token = player_token[:2]
+        # -fail| p2a: Solgaleo|unboost|[from] ability: Full Metal Body|[of] p2a: Solgaleo
+        sdata = data.split('|')
+        player_token = sdata[0][:2]
         if player_token == self.battleState[room]['you']:
             # AI_SEND_REWARD(BAD)
             with self.terminal_lock:
@@ -646,10 +658,12 @@ class Client:
 
     def enditem_action(self, room, data):
         # |-enditem|p2a: Carracosta|Air Balloon
+        # |-enditem|p1a: Dragonite|Lum Berry|[eat]
         # |-enditem|p1a: Furfrou|Chesto Berry|[from] move: Knock Off|[of] p2a: Simisage
-        pokemon_data, item = data.split('|')
-        player_token, pokemon_name = pokemon_data.split(': ')
+        sdata = data.split('|')
+        player_token, pokemon_name = sdata[0].split(': ')
         player_token = player_token[:2]
+        item = sdata[1]
 
         if player_token == self.battleState[room]['opponent']:
             for pokemon in self.battleState[room][player_token]['pokemon']:
@@ -797,6 +811,8 @@ class Client:
             yellow('Query response: ' + query_type + ' JSON: ' + json_data)
 
     def updatesearch_action(self, room, data):
+        # |updatesearch|{"searching":[],"games":{"battle-gen7ubers-640967362":"[Gen 7] Ubers Battle*"}}
+        # |updatesearch|{"searching":["gen7ubers"],"games":null}
         battles = json.loads(data)
         current_games = battles['games']
         with self.terminal_lock:
