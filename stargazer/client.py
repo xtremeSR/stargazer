@@ -348,8 +348,6 @@ class Client:
                 pokemon['boost'][boost_attr] += int(boost_val)
                 break
 
-
-
     def unboost_action(self, room, data):
         # |-unboost|p2a: Manectric|atk|1
         #|-unboost|p2a: Simisage|atk|1

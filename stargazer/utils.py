@@ -35,6 +35,18 @@ def yellow_bg(string):
     print '%s%s%s%s' % (bg(4), string, attr(1), attr(0))
     logger.info(string)
 
+def string_to_condition(condition):
+    condition = condition.split(' ')
+    hp_string = condition[0]
+    status = condition[1] if len(condition) >= 2 else None
+    hp = None
+    if hp_string == '0':
+        hp = 0.0
+    elif '/' in hp_string:
+        num, den = hp_string.split('/')
+        hp = float(num) / float(den)
+
+    return hp, status
 
 logging_config = dict(
     version=1,
