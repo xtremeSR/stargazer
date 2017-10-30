@@ -11,7 +11,7 @@ from .Pokemon import Pokemon
 from .Move import Move
 
 def json_to_moves(json_move_list):
-    assert json_move_list
+    assert hasattr(json_move_list, '__iter__')
     result = []
     for move in json_move_list:
         result.append(
@@ -45,8 +45,9 @@ class Player:
         self.rqid = None
 
     def __str__(self):
-        return "Name: %s\nTeamsize: %s\n" % (self.name, str(self.team_size)) + \
-                '\n'.join([str(pkmn) for pkmn in self.pokemon])
+        return "Name: %s\nIdx: %s\nTeamsize: %s\nScore: %s\nRQID:%s\n" % (self.name, self.idx, str(self.team_size), self.score, self.rqid) \
+                + '-----Pokemon-----\n' + '\n----------\n'.join([str(pkmn) for pkmn in self.pokemon]) + '\n-----Moves-----\n' \
+                + '\n'.join([str(move) for move in self.available_moves])
 
     def __repr__(self):
         pass
@@ -59,10 +60,9 @@ class Player:
         self.pokemon = []
         for pokemon in pokemon_json:
             ident = pokemon.get("ident")[4:]
-            print "pokemon: " + ident
             details = pokemon.get("details", "").split(", ")
             name = details[0] if len(details) else None
-            level = int(details[1][1:]) if len(details) > 1 else None
+            level = int(details[1][1:]) if len(details) > 1 else 100 # TODO: default 100 because Unknow has no level data
             gender = details[2] if len(details) > 2 else None
 
             condition = pokemon.get("condition", "")
@@ -93,12 +93,13 @@ class Player:
             )
 
     def update_moves(self, moves_json):
+        assert hasattr(moves_json, '__iter__')
         self.available_moves = []
         for pkmn in moves_json:
             move_data = dict()
             move_data["moves"] = json_to_moves(pkmn.get("moves"))
-            move_data["canZMove"] = json_to_moves(pkmn.get("canZMove"))
-            move_data["canMegaEvo"] = pkmn.get("canMegaEvo", false)
+            move_data["canZMove"] = json_to_moves(pkmn.get("canZMove", []))
+            move_data["canMegaEvo"] = pkmn.get("canMegaEvo", False)
             self.available_moves.append(move_data)
 
     def update(self, json_data):
@@ -107,9 +108,9 @@ class Player:
         # available moves
         self.update_pokemon(json_data.get("side").get("pokemon"))
         self.rqid = json_data.get("rqid")
-        # [{"moves":[{"move":"Scald","id":"scald","pp":24,"maxpp":24,"target":"normal","disabled":false},{"move":"Toxic","id":"toxic","pp":16,"maxpp":16,"target":"normal","disabled":false},{"move":"Roost","id":"roost","pp":16,"maxpp":16,"target":"self","disabled":false},{"move":"Air Slash","id":"airslash","pp":24,"maxpp":24,"target":"any","disabled":false}]}]
         # TODO: make a move class
-        self.update_moves(json_data.get("active"))
+        if json_data.get("active"):
+            self.update_moves(json_data.get("active"))
 
     def get_pokemon(self, attr, value):
         # return pokemon with pokemon.attr == value

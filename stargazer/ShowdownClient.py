@@ -4,7 +4,7 @@ import pdb
 
 import requests
 import random
-import re as regex
+import re
 import json
 import time
 from multiprocessing import Pipe, Process, freeze_support
@@ -31,6 +31,8 @@ from .HumanAgent import HumanAgent
     Description: ShowdownClient represents the Websocket client for connecting
     to, parsing messages from, sending responses to the server.
 '''
+
+# TODO: special case for ditto
 
 DELIM = '|'
 MSG_HEAD = '>'
@@ -312,8 +314,7 @@ class ShowdownClient:
             # with self.terminal_lock:
             self._ws.write_message('"|/trn ' + ','.join(["Sooham Rafiz", '0', json.loads(resp.text[1:])['assertion']]) + '"')
         else:
-            with self.terminal_lock:
-                red('Error: challstr response not 200')
+            red('Error: challstr response not 200')
         payload = {
             'act': 'login',
             'name': self.username,
@@ -343,22 +344,47 @@ class ShowdownClient:
 
     def start_action(self, room, data):
         # |-start|p2a: Emolga|Substitute
-        #|-start|p2a: Tapu Fini|Substitute
-        # game has started, train AI
-        pass
+        # |-start|p2a: Tapu Fini|Substitute
+        # |-start| p2a: Golduck|move: Leech Seed
+        idx, effect = data.split('|')[:2]
+        idx = idx[:2]
+        if effect.startswith('move: '):
+            effect = effect[6:]
+        battle = self.battles[room]
+        battle.side_effect[idx][effect] = True
 
     def end_action(self, room, data):
         # |-end|p1a: Regigigas|Slow Start|[silent]
-        pass
+        idx, effect = data.split('|')[:2]
+        idx = idx[:2]
+        if effect.startswith('move: '):
+            effect = effect[6:]
+        battle = self.battles[room]
+        if effect in battle.side_effect[idx]:
+            del battle.side_effect[idx][effect]
 
     def fieldstart_action(self, room, data):
         # |-fieldstart|move: Misty Terrain|[from] ability: Misty Surge|[of] p2a: Tapu Fini
 
         # TODO: get ability of opponent from this
-        field_info = data.split('|')
-        field_name = field_info[0].split(': ')[1]
-        print 'Field effect: ' + field_name
-        self.battles[room].field_effect = field_name
+        sdata = data.split('|')
+        move = sdata[0]
+        battle = self.battles[room]
+        if move.startswith('move:'):
+            move = move[6:]
+
+        # TODO: regexp
+        if len(sdata) > 2 and 'ability:' in sdata[1]:
+            ability = sdata[1].split(': ')[1]
+            idx = 'p2' if 'p2' in sdata[2] else 'p1'
+            pokemon_name = sdata[2].split(': ')[1]
+            pkmn = battle.get_player(idx).get_pokemon('ident', pokemon_name)
+            if pkmn:
+                pkmn.ability = ability
+                pkmn.base_ability = ability
+
+        green('Field effect: ' + move)
+        battle.field_effect = move
 
     def fieldend_action(self, room, data):
         # |-fieldend|Misty Terrain
@@ -368,15 +394,18 @@ class ShowdownClient:
         #|-sidestart|p1: u05431ujijklk|Spikes
         #-sidestart|p1: Sooham Rafiz|move: Stealth Rock
         #|-sidestart|p2: Zsguita|move: Stealth Rock
-        player, side_effect = data.split('|')
-        side_name = side_effect[1][6:]
-        player_token = player[:2]
+        sdata = data.split('|')
+        move = sdata[1]
+        idx = sdata[0][:2]
+        battle = self.battles[room]
+        if move.startswith('move:'):
+            move = move[6:]
 
-        print 'Side effect on player ' + player_token + "'s side: " + side_name
-        if 'side' not in self.battleState[room][player_token]:
-            self.battleState[room][player_token]['side'] = []
-            self.battleState[room][player_token]['side'].append(side_name)
+        player = battle.get_player(idx)
+        print 'Side effect on player ' + player.name + "'s side: " + move
+        battle.side_effect[idx][move] = True
 
+    # TODO: implement side-end
     def sideend_action(self, room, data):
         pass
 
@@ -384,6 +413,8 @@ class ShowdownClient:
         # |-boost|p1a: Tornadus|atk|1
         # |-boost|p1a: Houndoom|spa|2
         # |-boost|p2a: Serperior|spa|2
+        # |-boost|p1a: Samurott|atk|2
+
         pokemon_data, attr, val = data.split('|')
         idx, pokemon_name = pokemon_data.split(': ')
         idx = idx[:2]
@@ -400,7 +431,7 @@ class ShowdownClient:
         idx = idx[:2]
         player = self.battles[room].get_player(idx)
         pkmn = player.get_pokemon('ident', pokemon_name)
-        pkmn.boost(attr, int(val))
+        pkmn.unboost(attr, int(val))
 
     def item_action(self, room, data):
         # |-item|p2a: Carracosta|Air Balloon
@@ -448,6 +479,7 @@ class ShowdownClient:
         # |-weather|none
         # |-weather| data: Sandstorm|[from] ability: Sand Stream|[of] p2a: Tyranitar
         # |-weather|RainDance|[from] ability: Drizzle|[of] p2a: Kyogre
+        # SunnyDay|[from] ability: Drought|[of] p2a: Groudon
         # TODO: scrape ability of pokemon
         if data == 'none':
             self.battles[room].weather = None
@@ -456,7 +488,7 @@ class ShowdownClient:
             self.battles[room].weather = sdata[0] if ': ' not in sdata[0] else sdata.split(': ')[1]
             self.battles[room].opponent
             if len(sdata) == 3:
-                idx, pokemon_name = sdata[2].split(': ')[1]
+                idx, pokemon_name = sdata[2].split(': ')
                 idx = idx[-3:-1]
                 if self.battles[room].opponent is self.battles[room].get_player(idx):
                     pkmn = self.battles[room].opponent.get_pokemon('ident', pokemon_name)
@@ -468,23 +500,31 @@ class ShowdownClient:
         # |-status|p1a: Lunatone|brn
         # |-status|p1a: Bronzong|brn|[from] ability: Flame Body|[of] p2a: Moltres
         # |-status|p2a: Bouffalant|tox
+        # |-status|p1a: Beheeyem|tox
+
         # we can glean ability of opponent's pokemon
         sdata = data.split('|')
         idx = sdata[0][:2]
         status = sdata[1]
         pokemon_name = sdata[0][5:]
+        battle = self.battles[room]
 
-        if self.battles[room].get_player(idx) is self.battles[room].opponent:
+        if battle.get_player(idx) is battle.opponent:
+            pkmn = battle.opponent.get_pokemon('ident', pokemon_name)
+            if pkmn:
+                pkmn.status = status
+        else:
             content = re.match("ability:\s+?(.+?)\|\[of\] (p1|p2)a: (.+)", data)
             if content:
                 ability = content.group(1)
-                pokemon_name = content.group(2)
-                green("Opponents %s ability is %s" % (pokemon_name, ability))
-                pkmn = self.battles[room].opponent.get_pokmon('ident', pokemon_name)
-                if ability:
-                    pkmn.ability = ability
-                if status:
-                    pkmn.status = status
+                idd = content.group(2)
+                pokemon_name = content.group(3)
+                if battle.opponent is battle.get_player(idd):
+                    green("Opponents %s's ability is %s" % (pokemon_name, ability))
+                    pkmn = battle.opponent.get_pokmon('ident', pokemon_name)
+                    if pkmn and ability:
+                        pkmn.ability = ability
+                        pkmn.base_ability = ability
 
 
 
@@ -500,6 +540,7 @@ class ShowdownClient:
             pkmn = self.battles[room].opponent.get_pokemon('ident', pokemon_name)
             if pkmn:
                 pkmn.ability = ability
+                pkmn.base_ability = ability
 
     def drag_action(self, room, data):
         # |drag|p1a: Comfey|Comfey, L79, M|210/210
@@ -527,17 +568,19 @@ class ShowdownClient:
     def immune_action(self, room, data):
         #|-immune|p1a: Muk|[msg]
         #|-immune|p2a: Solgaleo|[msg]
+        #-immune |p1a: Skuntank|[msg]
         sdata = data.split('|')
         idx, pokemon_name = sdata[0].split(': ')
         idx = idx[:2]
 
+        battle = self.battles[room]
         if battle.get_player(idx) is battle.opponent:
             # AI_SEND_REWARD(GOOD)
-            green("Your pokemon was immune: " + pokemon)
+            red("Opponent's pokemon was immune: " + pokemon_name)
             # tell AI to switch to another pokemon here
         else:
             # AI_SEND_REWARD(BAD)
-            red("Opponent's pokemon was immune: " + pokemon)
+            green("Your pokemon was immune: " + pokemon_name)
 
 
     def damage_action(self, room, data):
@@ -547,7 +590,7 @@ class ShowdownClient:
         # |-damage|p2a: Emboar|88/100|[from] Recoil|[of] p1a: Lanturn
         # |-damage|p2a: Raticate|26/100|[from] item: Life Orb
         # |-damage|p2a: Yanmega|74/100 psn|[from] psn
-        # TODO: you can get item information from this
+
         damage_info = data.split('|')
         idx = damage_info[0][:2]
         pokemon_name = damage_info[0][5:]
@@ -556,11 +599,14 @@ class ShowdownClient:
 
         battle = self.battles[room]
         if battle.get_player(idx) is battle.opponent:
+            print "is opponent's pokemon"
             pkmn = battle.opponent.get_pokemon('ident', pokemon_name)
             if pkmn:
+                print "pokemon valid"
                 if len(data) == 3 and 'item' in damage_info[2]:
-                        item = damage_info[2].split(': ')[1].lower()
-                        pkmn.item = item
+                    green("pokemon " + pkmn.name + "has item " + item)
+                    item = damage_info[2].split(': ')[1]
+                    pkmn.item = item
                 pkmn.hp = hp
                 pkmn.status = status
 
@@ -618,7 +664,17 @@ class ShowdownClient:
     def detailschange_action(self, room, data):
         # |detailschange|p1a: Swampert|Swampert-Mega, L75, F
         # |detailschange|p1a: Gardevoir|Gardevoir-Mega, L77, F
-        pass
+        # |detailschange|p2a: Lucario|Lucario-Mega, L73, F
+        sdata = data.split('|')
+        idx, pokemon_name = sdata[0].split(': ')
+        idx = idx[:2]
+        new_pokemon_details = sdata[1].split(', ')
+        battle = self.battles[room]
+        pkmn = battle.get_player(idx).get_pokemon('ident', pokemon_name)
+        if pkmn:
+            pkmn.ident = new_pokemon_details[0]
+            pkmn.level = int(new_pokemon_details[1][1:]) if len(new_pokemon_details) > 1 else 100
+            pkmn.gender = new_pokemon_details[2] if len(new_pokemon_details) > 2 else None
 
 
 
@@ -678,10 +734,9 @@ class ShowdownClient:
         battle = self.battles[room]
         battle.next_turn()
         assert battle.turn == int(turn_num)
-        for pkmn in battle.opponent.pokemon:
-            blue_bg(pkmn)
-
-        self._agent.action(room)
+        blue_bg(battle.opponent)
+        blue_bg(battle.you)
+        # self._agent.action(room)
 
     def move_action(self, room, data):
         # |move|p1a: Empoleon|Stealth Rock|p2a: Raticate
@@ -689,7 +744,7 @@ class ShowdownClient:
         sdata = data.split('|')
         idx, pokemon_name = sdata[0].split(': ')
         idx = idx[:2]
-        move = sdata[1].lower()
+        move = sdata[1]
 
         battle = self.battles[room]
         if battle.get_player(idx) is battle.opponent:

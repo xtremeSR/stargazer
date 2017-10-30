@@ -37,7 +37,7 @@ class Battle:
 
         self.weather = None
         self.field_effect = None
-        self.side_effect = dict()
+        self.side_effect = {'p1': dict(), 'p2': dict()}
         self.turn = 0
 
     def __str__(self):
