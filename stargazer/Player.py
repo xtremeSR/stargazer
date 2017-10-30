@@ -62,7 +62,7 @@ class Player:
             ident = pokemon.get("ident")[4:]
             details = pokemon.get("details", "").split(", ")
             name = details[0] if len(details) else None
-            level = int(details[1][1:]) if len(details) > 1 else 100 # TODO: default 100 because Unknow has no level data
+            level = int(details[1][1:]) if len(details) > 1 else 100
             gender = details[2] if len(details) > 2 else None
 
             condition = pokemon.get("condition", "")
@@ -115,6 +115,6 @@ class Player:
     def get_pokemon(self, attr, value):
         # return pokemon with pokemon.attr == value
         for pkmn in self.pokemon:
-            if pkmn.__getattribute__(attr) == value:
+            if getattr(pkmn, attr) == value:
                 return pkmn
         return None

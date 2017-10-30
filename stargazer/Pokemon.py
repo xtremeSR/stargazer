@@ -70,6 +70,7 @@ class Pokemon(object):
         self.stats = stats if stats else dict()
         self.moves = moves if moves else []
         self._boost = dict()
+        self.switch_status = dict()
 
     def __str__(self):
         return "Active: %s\nId: %s\nName: %s\nLvl. %d\nGender: %s\nHP: %.2f\nItem: %s\nStatus: %s\nAbility: %s\nBase ability: %s\n" % (self.active, self.ident, self.name, self.level, self.gender, self.hp, self.item, self.status, self.ability, self.base_ability) \
@@ -82,6 +83,26 @@ class Pokemon(object):
     def unboost(self, attr, value):
         self._boost[attr] = self._boost.get(attr, 0) - value
 
+    def update(**kwargs):
+        for attr, value in kwargs.iteritems():
+            if hasattr(self, attr):
+                setattr(self, attr, value)
+            else:
+                raise RuntimeError
+
+    def reset_stats(self):
+        self._boost = dict()
+
+    def switch_in(self):
+        self.active = True
+
+    def switch_out(self):
+        if self.active:
+            self.reset_stats()
+            self.switch_status = dict()
+            self.active = False
+
     def add_move(self, move):
         if move not in self.moves:
             self.moves.append(move)
+

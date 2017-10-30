@@ -33,6 +33,7 @@ from .HumanAgent import HumanAgent
 '''
 
 # TODO: special case for ditto
+# TODO: upon moves like volt switch I do not know when to switch... figure it out
 
 DELIM = '|'
 MSG_HEAD = '>'
@@ -130,6 +131,7 @@ class ShowdownClient:
             'L':                self.leave_action,
             'cant':             self.cant_action,
             'challstr':         self.challstr_action,
+            'curestatus':       self.curestatus_action,
             'detailschange':    self.detailschange_action,
             'faint':            self.faint_action,
             'formats':          self.formats_action,
@@ -221,7 +223,6 @@ class ShowdownClient:
         else:
             # message format is good, pass to correct child
             message_content = message[3:-2]
-            #green(message_content)
 
             if message_content[0] == MSG_HEAD:
                 room_end = message_content.find('\n')
@@ -237,8 +238,11 @@ class ShowdownClient:
             self._out_pipes[proc_num].send(room + DELIM + message_content)
 
 
-    def log_message(self, room, message):
-        yellow("LOG: " + room + ': ' + message)
+    def log_message(self, room, data):
+        yellow("LOG: " + room + ': ' + data)
+        if data == 'deinit':
+            self.deinit(room)
+
 
     def start_battle(self):
         self._ws.write_message('"|/search gen7randombattle"')
@@ -248,6 +252,9 @@ class ShowdownClient:
         self._ws.write_message('"' + battle_room + '|/forfeit"')
         self._ws.write_message('"|/leave ' + battle_room + '"')
 
+    def deinit(self, room):
+        del self.battles[room]
+        green("Deinitialized room " + room)
     # ------------ ACTIONS --------------
 
     def crit_action(self, room, data):
@@ -278,11 +285,6 @@ class ShowdownClient:
         battles = json.loads(data)
         current_games = battles['games']
         print "Looking for %d battles, playing %d" % (len(battles['searching']), len(current_games) if current_games else 0)
-        # TODO: should I add a new battle seen in data to a subprocess
-        # and _battle_to_process?
-        #for battle in current_games:
-        #    proc_num = self._battle_to_process.get(battle)
-        #    if not proc_num:
 
     def updateuser_action(self, room, data):
         playername, loggedin, avatar = data.split('|')
@@ -329,7 +331,7 @@ class ShowdownClient:
             red('challstr response not 200')
 
     def request_action(self, room, data):
-        # {"active":[{"moves":[{"move":"Thunderbolt","id":"thunderbolt","pp":24,"maxpp":24,"target":"normal","disabled":false},{"move":"Focus Blast","id":"focusblast","pp":8,"maxpp":8,"target":"normal","disabled":false},{"move":"Nasty Plot","id":"nastyplot","pp":32,"maxpp":32,"target":"self","disabled":false},{"move":"Surf","id":"surf","pp":24,"maxpp":24,"target":"allAdjacent","disabled":false}],"canZMove":[{"move":"Stoked Sparksurfer","target":"normal"},null,null,null]}],"side":{"name":"Sooham Rafiz","id":"p1","pokemon":[{"ident":"p1: Raichu","details":"Raichu-Alola, L83, M","condition":"235/235","active":true,"stats":{"atk":146,"def":131,"spa":205,"spd":189,"spe":230},"moves":["thunderbolt","focusblast","nastyplot","surf"],"baseAbility":"surgesurfer","item":"aloraichiumz","pokeball":"pokeball","ability":"surgesurfer"},{"ident":"p1: Xurkitree","details":"Xurkitree, L76","condition":"251/251","active":false,"stats":{"atk":140,"def":152,"spa":307,"spd":152,"spe":170},"moves":["energyball","dazzlinggleam","voltswitch","thunderbolt"],"baseAbility":"beastboost","item":"choicescarf","pokeball":"pokeball","ability":"beastboost"},{"ident":"p1: Terrakion","details":"Terrakion, L77","condition":"267/267","active":false,"stats":{"atk":243,"def":183,"spa":155,"spd":183,"spe":211},"moves":["swordsdance","earthquake","closecombat","stoneedge"],"baseAbility":"justified","item":"lifeorb","pokeball":"pokeball","ability":"justified"},{"ident":"p1: Kartana","details":"Kartana, L75","condition":"212/212","active":false,"stats":{"atk":315,"def":240,"spa":132,"spd":90,"spe":207},"moves":["leafblade","sacredsword","swordsdance","psychocut"],"baseAbility":"beastboost","item":"lifeorb","pokeball":"pokeball","ability":"beastboost"},{"ident":"p1: Braviary","details":"Braviary, L81, M","condition":"295/295","active":false,"stats":{"atk":246,"def":168,"spa":139,"spd":168,"spe":176},"moves":["return","bulkup","superpower","substitute"],"baseAbility":"defiant","item":"leftovers","pokeball":"pokeball","ability":"defiant"},{"ident":"p1: Comfey","details":"Comfey, L79, M","condition":"210/210","active":false,"stats":{"atk":128,"def":188,"spa":175,"spd":219,"spe":204},"moves":["toxic","aromatherapy","uturn","synthesis"],"baseAbility":"naturalcure","item":"leftovers","pokeball":"pokeball","ability":"naturalcure"}]},"rqid":2}
+        # {"active":[{"moves":[{"move":"Thunderbolt","id":"thunderbolt","pp":24,"maxpp":24,"target":"normal","disabled":false},{"move":"Focus Blast","id":"focusblast","pp":8,"maxpp":8,"target":"normal","disabled":false},{"move":"Nasty Plot","id":"nastyplot","pp":32,"maxpp":32,"target":"self","disabled":false},{"move":"Surf","id":"surf","pp":24,"maxpp":24,"target":"allAdjacent","disabled":false}],"canZMove":[{"move":"Stoked Sparksurfer","target":"normal"},null,null,null]}],"side":{"name":"Sooham Rafiz","id":"p1","pokemon":[{"ident":"p1: Raichu","details":"Raichu-Alola, L83, M","condition":"235/235","active":true,"stats":{"atk":146,"def":131,"spa":205,"spd":189,"spe":230},"moves":["thunderbolt","focusblast","nastyplot","surf"],"baseAbility":"surgesurfer","item":"aloraichiumz","pokeball":"pokeball","ability":"surgesurfer"},{"ident":"p1: Xurkitree","details":"Xurkitree, L76","condition":"251/251","active":false,"stats":{"atk":140,"def":152,"spa":307,"spd":152,"spe":170},"moves":["energyball","dazzlinggleam","voltswitch","thunderbolt"],"baseAbility":"beastboost","item":"room + DELIM + message_contentscarf","pokeball":"pokeball","ability":"beastboost"},{"ident":"p1: Terrakion","details":"Terrakion, L77","condition":"267/267","active":false,"stats":{"atk":243,"def":183,"spa":155,"spd":183,"spe":211},"moves":["swordsdance","earthquake","closecombat","stoneedge"],"baseAbility":"justified","item":"lifeorb","pokeball":"pokeball","ability":"justified"},{"ident":"p1: Kartana","details":"Kartana, L75","condition":"212/212","active":false,"stats":{"atk":315,"def":240,"spa":132,"spd":90,"spe":207},"moves":["leafblade","sacredsword","swordsdance","psychocut"],"baseAbility":"beastboost","item":"lifeorb","pokeball":"pokeball","ability":"beastboost"},{"ident":"p1: Braviary","details":"Braviary, L81, M","condition":"295/295","active":false,"stats":{"atk":246,"def":168,"spa":139,"spd":168,"spe":176},"moves":["return","bulkup","superpower","substitute"],"baseAbility":"defiant","item":"leftovers","pokeball":"pokeball","ability":"defiant"},{"ident":"p1: Comfey","details":"Comfey, L79, M","condition":"210/210","active":false,"stats":{"atk":128,"def":188,"spa":175,"spd":219,"spe":204},"moves":["toxic","aromatherapy","uturn","synthesis"],"baseAbility":"naturalcure","item":"leftovers","pokeball":"pokeball","ability":"naturalcure"}]},"rqid":2}
         pokemon_data = json.loads(data)
         idx = pokemon_data["side"]["id"]
         player = self.battles[room].get_player(idx)
@@ -341,27 +343,47 @@ class ShowdownClient:
         self.battles[room]
         self.battles[room].resource_uri = ROOT_URL + room
 
+    def choice(self, room, data):
+        # choice||move voltswitch
+        pass
 
+    def curestatus_action(self, room, data):
+        #|curestatus|Chimecho|tox|[msg]
+        # TODO: does this pass player idx?
+        pokemon_name, effect = data.split('|')[:2]
+        battle = self.battles[room]
+        pkmn = battle.you.get_pokemon('ident', pokemon_name)
+        if pkmn and pkmn.status:
+            pkmn.status = None
+        else:
+            raise RuntimeError
+
+    # TODO: taunt will stay after pokemon switches out, need to fix this
+    # TODO: same with yawn
     def start_action(self, room, data):
         # |-start|p2a: Emolga|Substitute
         # |-start|p2a: Tapu Fini|Substitute
         # |-start| p2a: Golduck|move: Leech Seed
+        # p2a: Claydol|move: Yawn|[of] p1a: Chimecho
+        # p2a: Magnezone|move: Taunt
         idx, effect = data.split('|')[:2]
-        idx = idx[:2]
+        idx, pokemon_name  = idx[:2], idx[5:]
         if effect.startswith('move: '):
             effect = effect[6:]
         battle = self.battles[room]
-        battle.side_effect[idx][effect] = True
+        pkmn = battle.get_player(idx).get_pokemon(pokemon_name)
+        if pkmn:
+            pkmn.switch_status[effect] = True
 
     def end_action(self, room, data):
         # |-end|p1a: Regigigas|Slow Start|[silent]
         idx, effect = data.split('|')[:2]
-        idx = idx[:2]
+        idx, pokemon_name  = idx[:2], idx[5:]
         if effect.startswith('move: '):
             effect = effect[6:]
-        battle = self.battles[room]
-        if effect in battle.side_effect[idx]:
-            del battle.side_effect[idx][effect]
+        pkmn = self.battles[room].get_player(idx).get_pokemon(pokemon_name)
+        if pkmn and (effect in pkmn.switch_status):
+            del pkmn.switch_status[effect]
 
     def fieldstart_action(self, room, data):
         # |-fieldstart|move: Misty Terrain|[from] ability: Misty Surge|[of] p2a: Tapu Fini
@@ -435,13 +457,23 @@ class ShowdownClient:
 
     def item_action(self, room, data):
         # |-item|p2a: Carracosta|Air Balloon
-        pokemon_data, item = data.split('|')
-        idx, pokemon_name = pokemon_data.split(': ')
+        # |-item|p1a: Exeggutor|Sitrus Berry|[from] ability: Harvest
+        sdata = data.split('|')
+        idx, pokemon_name = sdata[0].split(': ')
         idx = idx[:2]
+        item = sdata[1]
 
-        pkmn = self.battles[room].opponent.get_pokemon('ident', pokemon_name)
-        if pkmn:
-            pkmn.item = item
+        battle = self.battles[room]
+        if battle.get_player(idx) is battle.opponent:
+            pkmn = battle.opponent.get_pokemon('ident', pokemon_name)
+            if pkmn:
+                pkmn.item = item
+
+            # glean ability information if any
+            if len(sdata) > 2:
+                ability = sdata[2].split(': ')[1]
+                pkmn.ability = ability
+                pkmn.base_ability = ability
 
     def enditem_action(self, room, data):
         # |-enditem|p2a: Carracosta|Air Balloon
@@ -641,6 +673,7 @@ class ShowdownClient:
     def player_action(self, room, data):
         # |player|p1|Sooham Rafiz|102
         # |player|p1|Anime sand|211
+        # |player|p1|
         idx, name, _ = data.split('|')
         # the return value below is a defaultdict with Battle factory
         battle = self.battles[room]
@@ -658,7 +691,7 @@ class ShowdownClient:
         # |-activate|p1a: Registeel|move: Protect
         # |-activate|p2a: Comfey|move: Aromatherapy
         # |-activate|p2a: Tapu Fini|move: Misty Terrain
-
+        # activate data: p1a: Chimecho|move: Heal Bell
         pass
 
     def detailschange_action(self, room, data):
@@ -681,52 +714,51 @@ class ShowdownClient:
     def switch_action(self, room, data):
         # |switch|p2a: Porygon2|Porygon2, L79|100/100
         # this and drag is only place where you can gain information about the opponent's pokemon
+        pokemon_prop = dict()
+
         pokemon, details, condition = data.split('|')
         idx, pokemon_name = pokemon.split(': ')
         idx = idx[:2]
         details = details.split(', ')
-        lvl = int(details[1][1:])
-        gender = details[2] if len(details) >= 3 else None
+        lvl = int(details[1][1:]) if len(details) > 1 else 100
+        gender = details[2] if len(details) > 2 else None
         hp, status = string_to_condition(condition)
+
+        pokemon_prop['active'] = True
+        pokemon_prop['ident'] = pokemon_name
+        pokemon_prop['name'] = pokemon_name
+        pokemon_prop['level'] = lvl
+        pokemon_prop['gender'] = gender
+        pokemon_prop['hp'] = hp
+        pokemon_prop['status'] = status
 
         battle = self.battles[room]
         if battle.get_player(idx) == battle.you:
             switch_success = False
             for pkmn in battle.you.pokemon:
                 if pkmn.ident == pokemon_name and pkmn.level == lvl and pkmn.gender == gender:
-                    pkmn.active = True
+                    pkmn.switch_in()
                     switch_success = True
                 else:
-                    pkmn.active = False
+                    pkmn.switch_out()
 
             if not switch_success:
                 red('Could not find Pokemon %s lvl. %d' % (pokemon_name, lvl))
                 red(self.battles[room])
+                raise RuntimeError
         else:
             # this is the opponent, we can store info on his pokemon
             is_new_pokemon = True
             for pkmn in battle.opponent.pokemon:
                 if pkmn.ident == pokemon_name and pkmn.level == lvl and pkmn.gender == gender:
-                    pkmn.active = True
-                    pkmn.lvl = lvl
-                    pkmn.gender = gender
-                    pkmn.hp = hp
-                    pkmn.status = status
+                    pkmn.update(**pokemon_prop)
                     is_new_pokemon = False
                 else:
-                    pkmn.active = False
+                    pkmn.switch_out()
 
             if is_new_pokemon:
                 battle.opponent.pokemon.append(
-                    Pokemon(
-                        ident=pokemon_name,
-                        name=pokemon_name,
-                        level=lvl,
-                        gender=gender,
-                        hp=hp,
-                        active=True,
-                        status=status
-                    )
+                    Pokemon(**pokemon_prop)
                 )
 
     def turn_action(self, room, turn_num):
@@ -771,6 +803,8 @@ class ShowdownClient:
             green("YOU WON! \xF0\x9F\x98\x83")
         else:
             red("YOU LOST! \xF0\x9F\x98\x93")
+
+        self.deinit(room)
 
 
     def leave_action(self, room, data):
