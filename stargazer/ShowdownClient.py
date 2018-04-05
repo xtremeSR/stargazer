@@ -33,7 +33,11 @@ from .HumanAgent import HumanAgent
 '''
 
 # TODO: special case for ditto
-# TODO: upon moves like volt switch I do not know when to switch... figure it out
+# TODO: upon moves like volt switch that force pokemon out and select new pokemon,
+# the AI does not know to switch
+
+# TOOD: create a watchdog timer that looks for call to turn
+# if timeout, call Agent switch action
 
 DELIM = '|'
 MSG_HEAD = '>'
@@ -42,21 +46,23 @@ ROOT_URL = "http://play.pokemonshowdown.com/"
 
 
 class ShowdownClient:
+    # Class for communicating with showdown client
+    #
     # This class uses multiprocessing and IPC
-    # to map on server messages to a process pool.
+    # to map incoming server messages to a process pool.
     #
     # This architecture was chosen for multiple reasons:
     # CPython does not support parallel CPU bound tasks
     # like model inference on threads due to the CPython's
     # Global Interpreter lock. In the future I am certain I shall
-    # switch to use a GPU with OpenCL, since that offloads computation
-    # to GPU and makes the process I/O bound (PCIe).
+    # switch to use GPU acceleration, since that offloads computation
+    # to GPU and makes the performing inference on current state I/O bound.
     #
     # Python signals become more complicated if we declare non-daemon threads.
     #
     # If it turns out that CPU matrix multiplication is too slow
     # it is best to use Intel's MKL before making any major architectural
-    # decisions.
+    # changes.
     _formats = None
     _chars = range(97, 122) + range(48, 57) + [95]
 
@@ -76,9 +82,9 @@ class ShowdownClient:
             _avatar: the player avatar
             _ioloop: Tornado IOLoop.
             _pool: list of subprocesses.
-            _out_pipes: pipes connecting to processes
+            _out_pipes: pipes connecting to subprocesses
             _battle_count: number of battles handled per subprocess
-            _battle_to_process:
+            _battle_to_process: map battle id to subprocess number in pool
             _n_process: number of processes for pool.
         '''
         self.username = username
@@ -218,6 +224,7 @@ class ShowdownClient:
     def parse(self, message):
         room = None
         message = message.decode('unicode_escape')
+    	blue_bg(message)
         if (message[:3] != 'a["') or (message[-2:] != '"]'):
             red('Bad message received format: ' + message)
         else:
@@ -286,6 +293,9 @@ class ShowdownClient:
         current_games = battles['games']
         print "Looking for %d battles, playing %d" % (len(battles['searching']), len(current_games) if current_games else 0)
 
+        if current_games and len(current_games):
+            self._agent.action(current_games.keys()[0])
+
     def updateuser_action(self, room, data):
         playername, loggedin, avatar = data.split('|')
         if playername == self.username and not self._loggedin:
@@ -294,7 +304,6 @@ class ShowdownClient:
             print "Updating User"
             print "Player: " + playername
             print ("Logged in" if loggedin else "Not logged in")
-
             self._agent.start_battle()
         else:
             yellow("Multiple login attempts.")
@@ -305,18 +314,6 @@ class ShowdownClient:
         #  Note that CHALLSTR contains | characters. (Also feel free to make the request to https:// if your client supports it.)
         #Either way, the response will start with ] and be followed by a JSON object which we'll call data.
         # Finish logging in (or renaming) by sending: /trn USERNAME,0,ASSERTION where USERNAME is your desired username and ASSERTION is data.assertion.
-        payload = {
-            'act': 'login',
-            'name': "Sooham Rafiz",
-            'challstr': data,
-            'pass': 'zHYCxfZg26V5'
-        }
-        resp = requests.post('https://play.pokemonshowdown.com/action.php', data=payload)
-        if (resp.status_code == 200):
-            # with self.terminal_lock:
-            self._ws.write_message('"|/trn ' + ','.join(["Sooham Rafiz", '0', json.loads(resp.text[1:])['assertion']]) + '"')
-        else:
-            red('Error: challstr response not 200')
         payload = {
             'act': 'login',
             'name': self.username,
@@ -358,7 +355,7 @@ class ShowdownClient:
         else:
             raise RuntimeError
 
-    # TODO: taunt will stay after pokemon switches out, need to fix this
+    # TODO: bug, taunt will stay after pokemon switches out, need to fix this
     # TODO: same with yawn
     def start_action(self, room, data):
         # |-start|p2a: Emolga|Substitute
@@ -853,7 +850,6 @@ class ShowdownClient:
             return
         if operation in self._operation_handler:
             self._operation_handler[operation](room, data)
-            pass
         else:
             yellow("Unhandled operation: " + operation)
 
@@ -862,5 +858,10 @@ if __name__ == '__main__':
     if len(sys.argv) < 3:
         print "python stargazer.ShowdownClient [username] [password]"
     freeze_support()
+    # TODO: add cmd line options using getlongpots / argparse
+    # for training online
+    # for running AI on real gains
+    # for username, pswd, type of agent
+    # TODO: implement an agent
     ps = ShowdownClient(sys.argv[1], sys.argv[2])
     ps.start()

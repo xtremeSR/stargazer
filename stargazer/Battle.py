@@ -9,7 +9,7 @@ from .Player import Player
 class Battle:
     def __init__(self):
         '''
-            resource_uri (str): The battle resource string given by SHowdown server.
+            resource_uri (str): The battle resource string given by Showdown server.
             title (str): The title of the battle.
             format (str): The format of the battle.
             gametype (str): The gametype of the battle.

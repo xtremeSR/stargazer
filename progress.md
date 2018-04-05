@@ -106,3 +106,7 @@ WebInterface class -- allows user to inspect agent model during battle, everytim
 
 Before the agent can run it also needs to be trained, which means iterating through many battles
 this would require initiating many battles one by one till agent converges which means
+
+# training the DQN agent on replays
+
+# self-play

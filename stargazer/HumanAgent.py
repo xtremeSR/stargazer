@@ -11,6 +11,7 @@ class HumanAgent(Agent):
 
     def start_battle(self):
         green("Starting battle")
+        self._ws.write_message('"|/utm null"')
         self._ws.write_message('"|/search gen7randombattle"')
 
     def forfeit_battle(self, room):
