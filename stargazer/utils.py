@@ -36,6 +36,9 @@ def yellow_bg(string):
     print '%s%s%s%s' % (bg(4), string, attr(1), attr(0))
     logger.info(string)
 
+def remove_nonascii(string):
+    return ''.join([c for c in string if (0 <= ord(c) < 128)])
+
 def string_to_condition(condition):
     '''
         Return normalized HP and status from normal status strings

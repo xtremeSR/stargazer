@@ -223,8 +223,8 @@ class ShowdownClient:
 
     def parse(self, message):
         room = None
-        message = message.decode('unicode_escape')
     	blue_bg(message)
+        message = remove_nonascii(message).decode('unicode_escape')
         if (message[:3] != 'a["') or (message[-2:] != '"]'):
             red('Bad message received format: ' + message)
         else:
@@ -293,8 +293,8 @@ class ShowdownClient:
         current_games = battles['games']
         print "Looking for %d battles, playing %d" % (len(battles['searching']), len(current_games) if current_games else 0)
 
-        if current_games and len(current_games):
-            self._agent.action(current_games.keys()[0])
+        #if current_games and len(current_games):
+        #    self._agent.action(current_games.keys()[0])
 
     def updateuser_action(self, room, data):
         playername, loggedin, avatar = data.split('|')
@@ -765,7 +765,8 @@ class ShowdownClient:
         assert battle.turn == int(turn_num)
         blue_bg(battle.opponent)
         blue_bg(battle.you)
-        # self._agent.action(room)
+        time.sleep(3)
+        self._agent.action(room)
 
     def move_action(self, room, data):
         # |move|p1a: Empoleon|Stealth Rock|p2a: Raticate
